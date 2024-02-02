@@ -1,74 +1,95 @@
 mod bantam;
-
 use crate::bantam::lexer::Lexer;
-use crate::bantam::bantam_parser::BantamParser;
 
 fn main() {
-    // Function call.
-    let mut passed: i32 = 0;
-    let mut failed: i32 = 0;
+    let args: Vec<_> = std::env::args().collect();
+    let input = &args[1];
 
-    test("a()", "a()", &mut passed, &mut failed);
-    test("a(b)", "a(b)", &mut passed, &mut failed);
-    test("a(b, c)", "a(b, c)", &mut passed, &mut failed);
-    test("a(b)(c)", "a(b)(c)", &mut passed, &mut failed);
-    test("a(b) + c(d)", "(a(b) + c(d))", &mut passed, &mut failed);
-    test("a(b ? c : d, e + f)", "a((b ? c : d), (e + f))", &mut passed, &mut failed);
+    let lexer = Lexer::new(input);
+    let mut parser = bantam::Parser::new(lexer);
 
-    // Unary precedence.
-    test("~!-+a", "(~(!(-(+a))))", &mut passed, &mut failed);
-    test("a!!!", "(((a!)!)!)", &mut passed, &mut failed);
+    let result = parser.parse_expression();
+    println!("{input} => {result}", result = result.print());
+}
 
-    // Unary and binary predecence.
-    test("-a * b", "((-a) * b)", &mut passed, &mut failed);
-    test("!a + b", "((!a) + b)", &mut passed, &mut failed);
-    test("~a ^ b", "((~a) ^ b)", &mut passed, &mut failed);
-    test("-a!",    "(-(a!))", &mut passed, &mut failed);
-    test("!a!",    "(!(a!))", &mut passed, &mut failed);
+// use
+// cargo test -- --nocapture --test-threads=1
+// to show output of successfull tests
 
-    // Binary precedence.
-    test("a = b + c * d ^ e - f / g", "(a = ((b + (c * (d ^ e))) - (f / g)))", &mut passed, &mut failed);
+// TODO maybe use expect-test
+#[cfg(test)]
+fn run(input: &str, expected: &str) {
+    let lexer = Lexer::new(input);
+    let mut parser = bantam::Parser::new(lexer);
 
-    // Binary associativity.
-    test("a = b = c", "(a = (b = c))", &mut passed, &mut failed);
-    test("a + b - c", "((a + b) - c)", &mut passed, &mut failed);
-    test("a * b / c", "((a * b) / c)", &mut passed, &mut failed);
-    test("a ^ b ^ c", "(a ^ (b ^ c))", &mut passed, &mut failed);
+    let result = parser.parse_expression();
+    let actual = result.print();
 
-    // Conditional operator.
-    test("a ? b : c ? d : e", "(a ? b : (c ? d : e))", &mut passed, &mut failed);
-    test("a ? b ? c : d : e", "(a ? (b ? c : d) : e)", &mut passed, &mut failed);
-    test("a + b ? c * d : e / f", "((a + b) ? (c * d) : (e / f))", &mut passed, &mut failed);
-
-    // Grouping.
-    test("a + (b + c) + d", "((a + (b + c)) + d)", &mut passed, &mut failed);
-    test("a ^ (b + c)", "(a ^ (b + c))", &mut passed, &mut failed);
-    test("(!a)!",    "((!a)!)", &mut passed, &mut failed);
-
-    // Show the results.
-    if failed == 0 {
-        println!("Passed all {} tests.", passed);
+    if actual == expected {
+        println!("{input:<27} ==> {expected}");
     } else {
-        println!("----");
-        println!("Failed {} out of {} tests.", failed, (failed + passed));
+        panic!("FAILED: input: {input} expected {expected}, got {actual}");
     }
 }
 
-fn test(source: &str, expected: &str, passed: &mut i32, failed: &mut i32) {
-    let lexer: Box<Lexer> = Box::new(Lexer::new(source.to_string()));
-    let mut parser: BantamParser = BantamParser::new(lexer);
+#[test]
+fn basic() {
+    println!();
+    run("a()", "a()");
+    run("a(b)", "a(b)");
+    run("a(b, c)", "a(b, c)");
+    run("a(b)(c)", "a(b)(c)");
+    run("a(b) + c(d)", "(a(b) + c(d))");
+    run("a(b ? c : d, e + f)", "a((b ? c : d), (e + f))");
+}
 
-    let result = parser.parse_expression();
-    let mut actual: String = String::new();
-    result.print(&mut actual);
+#[test]
+fn unary_precedences() {
+    println!();
+    run("~!-+a", "(~(!(-(+a))))");
+    run("a!!!", "(((a!)!)!)");
+}
 
-    if actual == expected {
-        *passed += 1;
-        println!("[OK]: {}   ==>   result: {}", source, expected);
-    }
-    else {
-        *failed += 1;
-        println!("[FAIL] Expected: {}", expected);
-        println!("         Actual: {}", actual);
-    }
+#[test]
+fn unary_and_binary_precedence() {
+    println!();
+    run("-a * b", "((-a) * b)");
+    run("!a + b", "((!a) + b)");
+    run("~a ^ b", "((~a) ^ b)");
+    run("-a!", "(-(a!))");
+    run("!a!", "(!(a!))");
+}
+
+#[test]
+fn binary_precedence() {
+    println!();
+    run(
+        "a = b + c * d ^ e - f / g",
+        "(a = ((b + (c * (d ^ e))) - (f / g)))",
+    );
+}
+
+#[test]
+fn binary_associativity() {
+    println!();
+    run("a = b = c", "(a = (b = c))");
+    run("a + b - c", "((a + b) - c)");
+    run("a * b / c", "((a * b) / c)");
+    run("a ^ b ^ c", "(a ^ (b ^ c))");
+}
+
+#[test]
+fn conditional_operator() {
+    println!();
+    run("a ? b : c ? d : e", "(a ? b : (c ? d : e))");
+    run("a ? b ? c : d : e", "(a ? (b ? c : d) : e)");
+    run("a + b ? c * d : e / f", "((a + b) ? (c * d) : (e / f))");
+}
+
+#[test]
+fn grouping() {
+    println!();
+    run("a + (b + c) + d", "((a + (b + c)) + d)");
+    run("a ^ (b + c)", "(a ^ (b + c))");
+    run("(!a)!", "((!a)!)");
 }
